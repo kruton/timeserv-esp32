@@ -35,6 +35,9 @@ picoserve = { version = "0.16.0", features = ["defmt", "embassy"] }
 # For debug builds always builds with some optimization
 opt-level = "s"
 
+[profile.dev.package.xtensa-lx-rt]
+opt-level = "z"
+
 [profile.release]
 codegen-units    = 1     # LLVM can perform better optimizations using a single thread
 debug            = 2
