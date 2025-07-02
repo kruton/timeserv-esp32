@@ -5,7 +5,10 @@
     reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
     holding buffers for the duration of a data transfer."
 )]
+#![feature(impl_trait_in_assoc_type)]
 
+use crate::task::web;
+use crate::task::web::{web_task, WEB_TASK_POOL_SIZE};
 use defmt::{info, warn};
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
@@ -34,6 +37,8 @@ use esp_hal::{
 use esp_println as _;
 // use mipidsi::{interface::SpiInterface, models::ILI9342CRgb565, Builder};
 use static_cell::StaticCell;
+
+mod task;
 
 // const DISPLAY_FREQ: u32 = 64_000_000;
 const NET_FREQ: u32 = 40_000_000;
@@ -179,7 +184,7 @@ async fn main(spawner: Spawner) {
     let seed = u64::from_le_bytes(seed);
 
     // Init network stack
-    static RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
+    static RESOURCES: StaticCell<StackResources<4>> = StaticCell::new();
     let (stack, runner) = embassy_net::new(
         device,
         embassy_net::Config::dhcpv4(Default::default()),
@@ -194,6 +199,12 @@ async fn main(spawner: Spawner) {
     let cfg = wait_for_config(stack).await;
     let local_addr = cfg.address.address();
     info!("IP address: {:?}", local_addr);
+
+    static WEB_SERVER: StaticCell<web::WebServer> = StaticCell::new();
+    let webserver = WEB_SERVER.init(web::WebServer::new());
+    for id in 0..WEB_TASK_POOL_SIZE {
+        spawner.must_spawn(web_task(id, stack, webserver));
+    }
 
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];

@@ -5,7 +5,7 @@ version = "0.1.0"
 
 [[bin]]
 name = "ptp-esp32"
-path = "./src/bin/main.rs"
+path = "./src/main.rs"
 
 [dependencies]
 esp-bootloader-esp-idf = "0.1.0"
@@ -27,6 +27,7 @@ embassy-sync = { version = "0.6.2", features = ["defmt"] }
 embassy-embedded-hal = "0.3.0"
 defmt = "1.0.1"
 esp-backtrace = { version = "0.16.0", features = ["defmt", "esp32", "exception-handler", "panic-handler"] }
+picoserve = { version = "0.16.0", features = ["defmt", "embassy"] }
 
 
 [profile.dev]
