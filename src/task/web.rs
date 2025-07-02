@@ -8,7 +8,7 @@ pub struct WebServer<'a> {
     config: &'a picoserve::Config<Duration>,
 }
 
-impl<'a> WebServer<'a> {
+impl WebServer<'_> {
     pub fn new() -> Self {
         let app = make_static!(AppRouter<AppProps>, AppProps.build_app());
 

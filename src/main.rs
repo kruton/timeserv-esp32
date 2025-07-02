@@ -118,7 +118,8 @@ async fn main(spawner: Spawner) {
         .with_frequency(Rate::from_mhz(40))
         .with_mode(Mode::_0);
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32_000);
+    #[allow(clippy::manual_div_ceil)]
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(4, 32_000);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
