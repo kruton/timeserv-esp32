@@ -14,7 +14,7 @@ esp-hal                = { version = "=1.0.0-beta.1", features = ["esp32", "psra
 critical-section = "1.2.0"
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
 embassy-time     = "0.4.0"
-esp-hal-embassy  = { version = "0.8.1", features = ["esp32"] }
+esp-hal-embassy  = { version = "0.8.1", features = ["defmt", "esp32"] }
 static_cell      = { version = "2.1.0", features = ["nightly"] }
 embassy-net = { version = "0.7.0", features = ["medium-ethernet", "proto-ipv4", "dhcpv4", "tcp", "medium-ip"] }
 embassy-net-wiznet = { version = "0.2.0" }

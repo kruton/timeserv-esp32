@@ -294,6 +294,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90327bcc66333a507f89ecc4e2d911b265c45f5c9bc241f98eee076752d35ac6"
 dependencies = [
  "critical-section",
+ "defmt 0.3.100",
  "document-features",
  "embassy-executor-macros",
 ]
@@ -444,6 +445,9 @@ name = "embedded-hal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+dependencies = [
+ "defmt 0.3.100",
+]
 
 [[package]]
 name = "embedded-hal-async"
@@ -470,6 +474,9 @@ name = "embedded-io"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+dependencies = [
+ "defmt 0.3.100",
+]
 
 [[package]]
 name = "embedded-io-async"
@@ -477,6 +484,7 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ff09972d4073aa8c299395be75161d582e7629cd663171d62af73c8d50dba3f"
 dependencies = [
+ "defmt 0.3.100",
  "embedded-io",
 ]
 
@@ -532,6 +540,7 @@ version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11a6b7c3d347de0a9f7bfd2f853be43fe32fa6fac30c70f6d6d67a1e936b87ee"
 dependencies = [
+ "defmt 1.0.1",
  "enumset_derive",
 ]
 
@@ -631,6 +640,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "critical-section",
+ "defmt 1.0.1",
  "delegate",
  "digest",
  "document-features",
@@ -649,6 +659,12 @@ dependencies = [
  "esp-metadata",
  "esp-riscv-rt",
  "esp32",
+ "esp32c2",
+ "esp32c3",
+ "esp32c6",
+ "esp32h2",
+ "esp32s2",
+ "esp32s3",
  "fugit",
  "instability",
  "nb 1.1.0",
@@ -672,6 +688,7 @@ checksum = "87807cdf22124ba46dbac7d7f6d3ee2e7f06c4e461f3783443464d868101647d"
 dependencies = [
  "cfg-if",
  "critical-section",
+ "defmt 1.0.1",
  "document-features",
  "embassy-executor",
  "embassy-sync",
@@ -748,6 +765,73 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83ddfdb413ef0739d84bd3fce771e6e0feb6457ac1bcdd7a1dcd6326061e919d"
 dependencies = [
  "critical-section",
+ "defmt 1.0.1",
+ "vcell",
+]
+
+[[package]]
+name = "esp32c2"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14ec669dc34787e73c8a7d99059fcdbd800cb0699c2ea9cd0a3d99cb5e9caefb"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
+ "vcell",
+]
+
+[[package]]
+name = "esp32c3"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24c0b2a8e8efa1755a28ca3ef54c85436f76531ba93dc79b55d5330349d067d7"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
+ "vcell",
+]
+
+[[package]]
+name = "esp32c6"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8009092b2a8f41532ce836ea7403b657eca7cd396c4513c650ade648831ed76"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
+ "vcell",
+]
+
+[[package]]
+name = "esp32h2"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03f683882d3713ec41379980406117b15fb48c2be8d5acdf1795ecb5fe9b6e41"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
+ "vcell",
+]
+
+[[package]]
+name = "esp32s2"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4391e38b14eb59a675e816598bde7d9b8c8f43a695a284bd97bcd0cf3092404"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
+ "vcell",
+]
+
+[[package]]
+name = "esp32s3"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27a4c6fd31207a297fc29d2b8f4da27facf45f8c83041f7c0f978aa65ab367c9"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
  "vcell",
 ]
 
@@ -763,6 +847,7 @@ version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17186ad64927d5ac8f02c1e77ccefa08ccd9eaa314d5a4772278aa204a22f7e7"
 dependencies = [
+ "defmt 0.3.100",
  "gcd",
 ]
 
