@@ -31,6 +31,8 @@ picoserve = { version = "0.16.0", features = ["defmt", "embassy"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 lcd-async = "0.1.1"
 embedded-graphics = { version = "0.8.1", features = ["defmt"] }
+axp192 = "0.2.0"
+embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
 
 
 [profile.dev]

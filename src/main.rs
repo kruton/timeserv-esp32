@@ -11,6 +11,7 @@
 use crate::task::web;
 use crate::task::web::{web_task, WEB_TASK_POOL_SIZE};
 use alloc::vec::Vec;
+use axp192::Axp192;
 use defmt::{info, warn};
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
@@ -20,6 +21,7 @@ use embassy_net_wiznet::{chip::W5500, Device, Runner, State};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::Duration;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
+use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
@@ -27,7 +29,7 @@ use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
-    i2c::master::I2c,
+    i2c::master::{Config as I2cConfig, I2c},
     rng::Rng,
     spi::{
         master::{Config as SpiConfig, Spi, SpiDmaBus},
@@ -58,7 +60,7 @@ const FRAME_SIZE: usize = (LCD_H_RES as usize) * (LCD_V_RES as usize) * PIXEL_SI
 static FRAME_BUFFER: StaticCell<Vec<u8>> = StaticCell::new();
 
 type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
-// type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
+//type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
 type EthernetSPI =
     SpiDeviceWithConfig<'static, NoopRawMutex, SpiDmaBus<'static, Async>, Output<'static>>;
 
@@ -90,6 +92,8 @@ async fn main(spawner: Spawner) {
     let timer0 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timer0.timer0);
 
+    let mut delay = embassy_time::Delay;
+
     // i2c
     let sda = peripherals.GPIO21;
     let scl = peripherals.GPIO22;
@@ -107,10 +111,15 @@ async fn main(spawner: Spawner) {
     let lcd_bl = peripherals.GPIO3;
     let lcd_rst = peripherals.GPIO4;
 
-    let _i2c = I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default())
+    // Initialize I2C components
+
+    let i2c = I2c::new(peripherals.I2C0, I2cConfig::default())
         .unwrap()
         .with_sda(sda)
         .with_scl(scl);
+
+    let mut pmu = Axp192::new(i2c);
+    m5sc2_init(&mut pmu, &mut delay).await.unwrap();
 
     // Shared SPI bus
 
@@ -171,7 +180,6 @@ async fn main(spawner: Spawner) {
 
     let dc_lcd = Output::new(lcd_dc, Level::Low, OutputConfig::default());
     let di = interface::SpiInterface::new(display_spi, dc_lcd);
-    let mut delay = embassy_time::Delay;
 
     let mut display = Builder::new(ILI9342CRgb565, di)
         .reset_pin(lcd_rst)
@@ -274,4 +282,57 @@ async fn wait_for_config(stack: Stack<'static>) -> embassy_net::StaticConfigV4 {
         }
         yield_now().await;
     }
+}
+
+async fn m5sc2_init<I2C, E>(
+    axp: &mut axp192::Axp192<I2C>,
+    delay: &mut embassy_time::Delay,
+) -> Result<(), E>
+where
+    I2C: embedded_hal::i2c::I2c<Error = E>,
+{
+    // Default setup for M5Stack Core 2
+    axp.set_dcdc1_voltage(3350)?; // Voltage to provide to the microcontroller (this one!)
+
+    axp.set_ldo2_voltage(3300)?; // Peripherals (LCD, ...)
+    axp.set_ldo2_on(true)?;
+
+    axp.set_ldo3_voltage(2000)?; // Vibration motor
+    axp.set_ldo3_on(false)?;
+
+    axp.set_dcdc3_voltage(2800)?; // LCD backlight
+    axp.set_dcdc3_on(true)?;
+
+    axp.set_gpio1_mode(axp192::GpioMode12::NmosOpenDrainOutput)?; // Power LED
+    axp.set_gpio1_output(false)?; // In open drain modes, state is opposite to what you might
+                                  // expect
+
+    axp.set_gpio2_mode(axp192::GpioMode12::NmosOpenDrainOutput)?; // Speaker
+    axp.set_gpio2_output(true)?;
+
+    axp.set_key_mode(
+        // Configure how the power button press will work
+        axp192::ShutdownDuration::Sd4s,
+        axp192::PowerOkDelay::Delay64ms,
+        true,
+        axp192::LongPress::Lp1000ms,
+        axp192::BootTime::Boot512ms,
+    )?;
+
+    axp.set_gpio4_mode(axp192::GpioMode34::NmosOpenDrainOutput)?; // LCD reset control
+
+    axp.set_battery_voltage_adc_enable(true)?;
+    axp.set_battery_current_adc_enable(true)?;
+    axp.set_acin_current_adc_enable(true)?;
+    axp.set_acin_voltage_adc_enable(true)?;
+
+    // Actually reset the LCD
+    axp.set_gpio4_output(false)?;
+    axp.set_ldo3_on(true)?; // Buzz the vibration motor while intializing ¯\_(ツ)_/¯
+    delay.delay_ms(100u32).await;
+    axp.set_gpio4_output(true)?;
+    axp.set_ldo3_on(false)?;
+    delay.delay_ms(100u32).await;
+
+    Ok(())
 }
