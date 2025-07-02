@@ -10,6 +10,7 @@
 
 use crate::task::web;
 use crate::task::web::{web_task, WEB_TASK_POOL_SIZE};
+use alloc::vec::Vec;
 use defmt::{info, warn};
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
@@ -18,24 +19,26 @@ use embassy_net::{Stack, StackResources};
 use embassy_net_wiznet::{chip::W5500, Device, Runner, State};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::Duration;
+use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_io_async::Write;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
-    //dma::{DmaRxBuf, DmaTxBuf},
-    //dma_buffers,
+    dma::{DmaRxBuf, DmaTxBuf},
+    dma_buffers,
     gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     i2c::master::I2c,
     rng::Rng,
     spi::{
-        master::{Config as SpiConfig, Spi},
+        master::{Config as SpiConfig, Spi, SpiDmaBus},
         Mode,
     },
     time::Rate,
     Async,
 };
-//use mipidsi::{interface::SpiInterface, models::ILI9342CRgb565, Builder};
-use mipidsi::interface::SpiInterface;
+use lcd_async::{
+    interface, models::ILI9342CRgb565, options::Orientation, raw_framebuf::RawFrameBuf, Builder,
+};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 
@@ -46,9 +49,18 @@ mod task;
 const DISPLAY_FREQ: u32 = 64_000_000;
 const NET_FREQ: u32 = 40_000_000;
 
-type Spi2Bus = Mutex<NoopRawMutex, Spi<'static, Async>>;
+// Display parameters
+const LCD_H_RES: u16 = 320;
+const LCD_V_RES: u16 = 240;
+const PIXEL_SIZE: usize = 2; // RGB565 = 2 bytes per pixel
+const FRAME_SIZE: usize = (LCD_H_RES as usize) * (LCD_V_RES as usize) * PIXEL_SIZE;
+
+static FRAME_BUFFER: StaticCell<Vec<u8>> = StaticCell::new();
+
+type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
 // type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
-type EthernetSPI = SpiDeviceWithConfig<'static, NoopRawMutex, Spi<'static, Async>, Output<'static>>;
+type EthernetSPI =
+    SpiDeviceWithConfig<'static, NoopRawMutex, SpiDmaBus<'static, Async>, Output<'static>>;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -86,7 +98,7 @@ async fn main(spawner: Spawner) {
     let sck = peripherals.GPIO18;
     let miso = peripherals.GPIO38;
     let mosi = peripherals.GPIO23;
-    let _dma = peripherals.DMA_SPI2;
+    let dma = peripherals.DMA_SPI2;
     let w5500_cs = peripherals.GPIO33;
     let w5500_rst = peripherals.GPIO24;
     let w5500_int = peripherals.GPIO19;
@@ -106,17 +118,17 @@ async fn main(spawner: Spawner) {
         .with_frequency(Rate::from_mhz(40))
         .with_mode(Mode::_0);
 
-    //let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
-    //let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
-    //let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32_000);
+    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
     let spi = Spi::new(spi, spi_cfg)
         .unwrap()
         .with_sck(sck)
         .with_miso(miso)
         .with_mosi(mosi)
-        //.with_dma(dma)
-        //.with_buffers(dma_rx_buf, dma_tx_buf)
+        .with_dma(dma)
+        .with_buffers(dma_rx_buf, dma_tx_buf)
         .into_async();
 
     static SPI_BUS: StaticCell<Spi2Bus> = StaticCell::new();
@@ -143,9 +155,8 @@ async fn main(spawner: Spawner) {
         .unwrap();
     spawner.spawn(ethernet_task(runner)).unwrap();
 
-    check_is_spi_bus(spi_bus.get_mut());
     // Configure the LCD display
-    let mut display_config = SpiConfig::default().with_frequency(Rate::from_hz(DISPLAY_FREQ));
+    let display_config = SpiConfig::default().with_frequency(Rate::from_hz(DISPLAY_FREQ));
 
     let display_spi = SpiDeviceWithConfig::new(
         spi_bus,
@@ -153,30 +164,44 @@ async fn main(spawner: Spawner) {
         display_config,
     );
 
-    //let lcd_dc = Output::new(lcd_dc, Level::Low, OutputConfig::default());
-    // let lcd_rst = Output::new(lcd_rst, Level::Low, OutputConfig::default());
+    let lcd_rst = Output::new(lcd_rst, Level::Low, OutputConfig::default());
 
     let _bl = Output::new(lcd_bl, Level::High, OutputConfig::default());
 
-    static BUF_LCD: StaticCell<[u8; 512]> = StaticCell::new();
-    let mut buf_lcd = BUF_LCD.init([0; 512]);
     let dc_lcd = Output::new(lcd_dc, Level::Low, OutputConfig::default());
-    let _di = SpiInterface::new(display_spi, dc_lcd, buf_lcd);
+    let di = interface::SpiInterface::new(display_spi, dc_lcd);
+    let mut delay = embassy_time::Delay;
 
-    // let lcd = Builder::new(ILI9342CRgb565, di);
-    // .display_size(crate::LCD_H_RES as u16, crate::LCD_V_RES as u16)
-    // .orientation(Orientation::new().flip_vertical().flip_horizontal())
-    // .color_order(mipidsi::options::ColorOrder::Bgr)
-    // .reset_pin(Output::new(
-    //     peripherals.GPIO4,
-    //     Level::High,
-    //     OutputConfig::default(),
-    // ))
-    // .build()
-    // .await
-    // .unwrap();
+    let mut display = Builder::new(ILI9342CRgb565, di)
+        .reset_pin(lcd_rst)
+        .display_size(LCD_H_RES, LCD_V_RES)
+        .orientation(Orientation::new().flip_vertical().flip_horizontal())
+        .color_order(lcd_async::options::ColorOrder::Bgr)
+        .init(&mut delay)
+        .await
+        .unwrap();
 
-    // let lcd_di = lcd_display_interface!(peripherals, spi_bus);
+    info!("Display initialized!");
+
+    // Initialize frame buffer
+    let frame_buffer = FRAME_BUFFER.init(Vec::<u8>::with_capacity(FRAME_SIZE));
+
+    // Create a framebuffer for drawing
+    let mut raw_fb = RawFrameBuf::<Rgb565, _>::new(
+        frame_buffer.as_mut_slice(),
+        LCD_H_RES.into(),
+        LCD_V_RES.into(),
+    );
+
+    // Clear the framebuffer to black
+    raw_fb.clear(Rgb565::BLACK).unwrap();
+
+    // Send the framebuffer data to the display
+    display
+        .show_raw_data(0, 0, LCD_H_RES, LCD_V_RES, frame_buffer)
+        .await
+        .unwrap();
+
     // Generate a random seed for the network stack
     let mut rng = Rng::new(peripherals.RNG);
     let mut seed = [0; 8];
@@ -249,5 +274,3 @@ async fn wait_for_config(stack: Stack<'static>) -> embassy_net::StaticConfigV4 {
         yield_now().await;
     }
 }
-
-fn check_is_spi_bus(_bus: &impl embedded_hal_async::spi::SpiBus) {}
