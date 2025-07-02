@@ -22,31 +22,32 @@ use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
-    dma::{DmaRxBuf, DmaTxBuf},
-    dma_buffers,
+    //dma::{DmaRxBuf, DmaTxBuf},
+    //dma_buffers,
     gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     i2c::master::I2c,
     rng::Rng,
     spi::{
-        master::{Config as SpiConfig, Spi, SpiDmaBus},
+        master::{Config as SpiConfig, Spi},
         Mode,
     },
     time::Rate,
     Async,
 };
 use esp_println as _;
-// use mipidsi::{interface::SpiInterface, models::ILI9342CRgb565, Builder};
+//use mipidsi::{interface::SpiInterface, models::ILI9342CRgb565, Builder};
+use mipidsi::interface::SpiInterface;
 use static_cell::StaticCell;
 
 mod task;
 
-// const DISPLAY_FREQ: u32 = 64_000_000;
+const DISPLAY_FREQ: u32 = 64_000_000;
 const NET_FREQ: u32 = 40_000_000;
 
-type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
+type Spi2Bus = Mutex<NoopRawMutex, Spi<'static, Async>>;
 // type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
 type EthernetSPI =
-    SpiDeviceWithConfig<'static, NoopRawMutex, SpiDmaBus<'static, Async>, Output<'static>>;
+    SpiDeviceWithConfig<'static, NoopRawMutex, Spi<'static, Async>, Output<'static>>;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -82,14 +83,14 @@ async fn main(spawner: Spawner) {
     let sck = peripherals.GPIO18;
     let miso = peripherals.GPIO38;
     let mosi = peripherals.GPIO23;
-    let dma = peripherals.DMA_SPI2;
+    let _dma = peripherals.DMA_SPI2;
     let w5500_cs = peripherals.GPIO33;
     let w5500_rst = peripherals.GPIO24;
     let w5500_int = peripherals.GPIO19;
-    let _lcd_dc = peripherals.GPIO15;
-    let _lcd_cs = peripherals.GPIO5;
-    let _lcd_bl = peripherals.GPIO3;
-    let _lcd_rst = peripherals.GPIO4;
+    let lcd_dc = peripherals.GPIO15;
+    let lcd_cs = peripherals.GPIO5;
+    let lcd_bl = peripherals.GPIO3;
+    let lcd_rst = peripherals.GPIO4;
 
     esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
@@ -104,17 +105,17 @@ async fn main(spawner: Spawner) {
         .with_frequency(Rate::from_mhz(40))
         .with_mode(Mode::_0);
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
-    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
-    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
+    //let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
+    //let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    //let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
     let spi = Spi::new(spi, spi_cfg)
         .unwrap()
         .with_sck(sck)
         .with_miso(miso)
         .with_mosi(mosi)
-        .with_dma(dma)
-        .with_buffers(dma_rx_buf, dma_tx_buf)
+        //.with_dma(dma)
+        //.with_buffers(dma_rx_buf, dma_tx_buf)
         .into_async();
 
     static SPI_BUS: StaticCell<Spi2Bus> = StaticCell::new();
@@ -141,27 +142,25 @@ async fn main(spawner: Spawner) {
         .unwrap();
     spawner.spawn(ethernet_task(runner)).unwrap();
 
+    check_is_spi_bus(spi_bus.get_mut());
     // Configure the LCD display
-    // let mut display_config = SpiConfig::default().with_frequency(Rate::from_hz(DISPLAY_FREQ));
+    let mut display_config = SpiConfig::default().with_frequency(Rate::from_hz(DISPLAY_FREQ));
 
-    // let display_spi = SpiDeviceWithConfig::new(
-    //     &spi_bus,
-    //     Output::new(lcd_cs, Level::High, OutputConfig::default()),
-    //     display_config,
-    // );
+    let display_spi = SpiDeviceWithConfig::new(
+        spi_bus,
+        Output::new(lcd_cs, Level::High, OutputConfig::default()),
+        display_config,
+    );
 
-    // let lcd_dc = Output::new(lcd_dc, Level::Low, OutputConfig::default());
+    //let lcd_dc = Output::new(lcd_dc, Level::Low, OutputConfig::default());
     // let lcd_rst = Output::new(lcd_rst, Level::Low, OutputConfig::default());
 
-    // let _bl = Output::new(lcd_bl, Level::High, OutputConfig::default());
+    let _bl = Output::new(lcd_bl, Level::High, OutputConfig::default());
 
-    // let di = SPIInterface::new(display_spi, lcd_dc);
-
-    // let mut display = Builder::new(ILI9342CRgb565, di);
-    // static BUF_LCD: StaticCell<[u8; 512]> = StaticCell::new();
-    // let mut buf_lcd = BUF_LCD.init([0; 512]);
-    // let dc_lcd = Output::new(lcd_dc, Level::Low, OutputConfig::default());
-    // let di = SpiInterface::new(spi_lcd, dc_lcd, buf_lcd);
+    static BUF_LCD: StaticCell<[u8; 512]> = StaticCell::new();
+    let mut buf_lcd = BUF_LCD.init([0; 512]);
+    let dc_lcd = Output::new(lcd_dc, Level::Low, OutputConfig::default());
+    let _di = SpiInterface::new(display_spi, dc_lcd, buf_lcd);
 
     // let lcd = Builder::new(ILI9342CRgb565, di);
     // .display_size(crate::LCD_H_RES as u16, crate::LCD_V_RES as u16)
@@ -249,3 +248,5 @@ async fn wait_for_config(stack: Stack<'static>) -> embassy_net::StaticConfigV4 {
         yield_now().await;
     }
 }
+
+fn check_is_spi_bus(_bus: &impl embedded_hal_async::spi::SpiBus) {}
