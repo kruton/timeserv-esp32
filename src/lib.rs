@@ -24,6 +24,7 @@ use esp_hal::{
     Async,
 };
 use log::{info, warn};
+// use mipidsi::{interface::SpiInterface, models::ILI9342CRgb565, Builder};
 use static_cell::StaticCell;
 
 type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
@@ -101,6 +102,29 @@ async fn main(spawner: Spawner) {
         .unwrap();
     spawner.spawn(ethernet_task(runner)).unwrap();
 
+    // Configure the LCD display
+    // let dc_lcd = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
+    // let cs_lcd = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
+    // let spi_lcd = SpiDevice::new(spi_bus, cs_lcd);
+
+    // static BUF_LCD: StaticCell<[u8; 512]> = StaticCell::new();
+    // let mut buf_lcd = BUF_LCD.init([0; 512]);
+    // let di = SpiInterface::new(spi_lcd, dc_lcd, buf_lcd);
+
+    // let lcd = Builder::new(ILI9342CRgb565, di);
+    // .display_size(crate::LCD_H_RES as u16, crate::LCD_V_RES as u16)
+    // .orientation(Orientation::new().flip_vertical().flip_horizontal())
+    // .color_order(mipidsi::options::ColorOrder::Bgr)
+    // .reset_pin(Output::new(
+    //     peripherals.GPIO4,
+    //     Level::High,
+    //     OutputConfig::default(),
+    // ))
+    // .build()
+    // .await
+    // .unwrap();
+
+    // let lcd_di = lcd_display_interface!(peripherals, spi_bus);
     // Generate a random seed for the network stack
     let mut rng = Rng::new(peripherals.RNG);
     let mut seed = [0; 8];
