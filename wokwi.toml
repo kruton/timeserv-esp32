@@ -1,5 +1,6 @@
 [wokwi]
 version = 1
 gdbServerPort = 3333
-elf = "target/xtensa-esp32-none-elf/debug/test1"
-firmware = "target/xtensa-esp32-none-elf/debug/test1"
+rfc2217ServerPort = 4000
+elf = "target/xtensa-esp32-none-elf/debug/ptp-esp32"
+firmware = "target/xtensa-esp32-none-elf/debug/ptp-esp32"

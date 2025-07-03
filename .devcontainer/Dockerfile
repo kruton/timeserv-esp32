@@ -14,7 +14,7 @@ ARG GITHUB_TOKEN
 # Install dependencies
 RUN apt-get update \
     && apt-get install -y git curl llvm-dev libclang-dev clang unzip \
-    libusb-1.0-0 libssl-dev libudev-dev pkg-config \
+    libusb-1.0-0 libssl-dev libudev-dev pkg-config netcat-openbsd \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/* /tmp/library-scripts
 
 # Set users
@@ -44,7 +44,13 @@ RUN ARCH=$($HOME/.cargo/bin/rustup show | grep "Default host" | sed -e 's/.* //'
     curl -L "https://github.com/esp-rs/esp-web-flash-server/releases/latest/download/web-flash-${ARCH}.zip" -o "${HOME}/.cargo/bin/web-flash.zip" && \
     unzip "${HOME}/.cargo/bin/web-flash.zip" -d "${HOME}/.cargo/bin/" && \
     rm "${HOME}/.cargo/bin/web-flash.zip" && \
-    chmod u+x "${HOME}/.cargo/bin/web-flash"
+    chmod u+x "${HOME}/.cargo/bin/web-flash" && \
+    rustup default stable && \
+    curl -L "https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-${ARCH}.tgz" -o "${HOME}/.cargo/bin/cargo-binstall.tgz" && \
+    tar -xzf "${HOME}/.cargo/bin/cargo-binstall.tgz" -C "${HOME}/.cargo/bin/" && \
+    rm "${HOME}/.cargo/bin/cargo-binstall.tgz" && \
+    chmod u+x "${HOME}/.cargo/bin/cargo-binstall" && \
+    cargo binstall defmt-print
 
 # Install Xtensa Rust
 RUN if [ -n "${GITHUB_TOKEN}" ]; then export GITHUB_TOKEN=${GITHUB_TOKEN}; fi  \
