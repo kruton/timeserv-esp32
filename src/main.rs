@@ -19,14 +19,12 @@ use embassy_futures::yield_now;
 use embassy_net::{Stack, StackResources};
 use embassy_net_wiznet::{chip::W5500, Device, Runner, State};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
 use embedded_graphics::primitives::{Circle, PrimitiveStyle};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
-use esp_alloc::{EspHeap, HeapStats};
 use esp_hal::clock::CpuClock;
-use esp_hal::psram;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
@@ -198,11 +196,6 @@ async fn main(spawner: Spawner) {
     let frame_buffer =
         FRAME_BUFFER.init(Vec::with_capacity_in(FRAME_SIZE, esp_alloc::ExternalMemory));
     frame_buffer.resize(FRAME_SIZE, 0);
-
-    let stats = esp_alloc::HEAP.stats();
-    // HeapStats implements the Display and defmt::Format traits, so you can
-    // pretty-print the heap stats.
-    println!("{}", stats);
 
     // Create a framebuffer for drawing
     let mut raw_fb = RawFrameBuf::<Rgb565, _>::new(
