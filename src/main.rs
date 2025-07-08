@@ -8,29 +8,23 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(allocator_api)]
 
-use crate::task::web;
-use crate::task::web::{web_task, WEB_TASK_POOL_SIZE};
+#[cfg(feature = "ethernet")]
+use crate::ethernet::EthernetTask;
 use alloc::vec::Vec;
 use axp192::Axp192;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
-use embassy_futures::yield_now;
-use embassy_net::{Stack, StackResources};
-use embassy_net_wiznet::{chip::W5500, Device, Runner, State};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_time::Duration;
 use embedded_graphics::primitives::{Circle, PrimitiveStyle};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_async::delay::DelayNs;
-use embedded_io_async::Write;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers,
-    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
+    gpio::{Level, Output, OutputConfig},
     i2c::master::{Config as I2cConfig, I2c},
-    rng::Rng,
     spi::{
         master::{Config as SpiConfig, Spi, SpiDmaBus},
         Mode,
@@ -46,10 +40,11 @@ use {esp_backtrace as _, esp_println as _};
 
 extern crate alloc;
 
+#[cfg(feature = "ethernet")]
+mod ethernet;
 mod task;
 
 const DISPLAY_FREQ: u32 = 20_000_000;
-const NET_FREQ: u32 = 40_000_000;
 
 // Display parameters
 const LCD_H_RES: u16 = 320;
@@ -59,29 +54,15 @@ const FRAME_SIZE: usize = (LCD_H_RES as usize) * (LCD_V_RES as usize) * PIXEL_SI
 
 static FRAME_BUFFER: StaticCell<Vec<u8, esp_alloc::ExternalMemory>> = StaticCell::new();
 
-type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
+pub type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
 //type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
-type EthernetSPI =
-    SpiDeviceWithConfig<'static, NoopRawMutex, SpiDmaBus<'static, Async>, Output<'static>>;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-#[embassy_executor::task]
-async fn ethernet_task(
-    runner: Runner<'static, W5500, EthernetSPI, Input<'static>, Output<'static>>,
-) -> ! {
-    runner.run().await
-}
-
-#[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, Device<'static>>) -> ! {
-    runner.run().await
-}
-
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] spawner: Spawner) {
     println!("starting");
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
@@ -103,9 +84,6 @@ async fn main(spawner: Spawner) {
     let miso = peripherals.GPIO38;
     let mosi = peripherals.GPIO23;
     let dma = peripherals.DMA_SPI2;
-    let w5500_cs = peripherals.GPIO33;
-    let w5500_rst = peripherals.GPIO24;
-    let w5500_int = peripherals.GPIO19;
     let lcd_dc = peripherals.GPIO15;
     let lcd_cs = peripherals.GPIO5;
     let lcd_bl = peripherals.GPIO3;
@@ -143,27 +121,6 @@ async fn main(spawner: Spawner) {
 
     static SPI_BUS: StaticCell<Spi2Bus> = StaticCell::new();
     let spi_bus = SPI_BUS.init(Mutex::new(spi));
-
-    // Configure the W5500 Ethernet chip
-    let net_config = SpiConfig::default()
-        .with_frequency(Rate::from_hz(NET_FREQ))
-        .with_mode(Mode::_0);
-    let spi_net = SpiDeviceWithConfig::new(
-        spi_bus,
-        Output::new(w5500_cs, Level::High, OutputConfig::default()),
-        net_config,
-    );
-
-    let mac_addr = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00];
-    static STATE: StaticCell<State<8, 8>> = StaticCell::new();
-    let state = STATE.init(State::<8, 8>::new());
-
-    let net_int = Input::new(w5500_int, InputConfig::default().with_pull(Pull::Up));
-    let net_rst = Output::new(w5500_rst, Level::High, OutputConfig::default());
-    let (device, runner) = embassy_net_wiznet::new(mac_addr, state, spi_net, net_int, net_rst)
-        .await
-        .unwrap();
-    spawner.spawn(ethernet_task(runner)).unwrap();
 
     // Configure the LCD display
     let display_config = SpiConfig::default().with_frequency(Rate::from_hz(DISPLAY_FREQ));
@@ -217,76 +174,19 @@ async fn main(spawner: Spawner) {
         .await
         .unwrap();
 
-    // Generate a random seed for the network stack
-    let mut rng = Rng::new(peripherals.RNG);
-    let mut seed = [0; 8];
-    rng.read(&mut seed);
-    let seed = u64::from_le_bytes(seed);
+    cfg_if::cfg_if! {
+        if #[cfg(feature="ethernet")] {
+            use esp_hal::rng::Rng;
 
-    // Init network stack
-    static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
-    let (stack, runner) = embassy_net::new(
-        device,
-        embassy_net::Config::dhcpv4(Default::default()),
-        RESOURCES.init(StackResources::new()),
-        seed,
-    );
-    spawner.spawn(net_task(runner)).unwrap();
+            let w5500_cs = peripherals.GPIO33;
+            let w5500_rst = peripherals.GPIO24;
+            let w5500_int = peripherals.GPIO19;
 
-    stack.wait_config_up().await;
+            let ethernet_task = EthernetTask::new();
+            let mut rng = Rng::new(peripherals.RNG);
 
-    println!("Waiting for DHCP...");
-    let cfg = wait_for_config(stack).await;
-    let local_addr = cfg.address.address();
-    println!("IP address: {:?}", local_addr);
-
-    static WEB_SERVER: StaticCell<web::WebServer> = StaticCell::new();
-    let webserver = WEB_SERVER.init(web::WebServer::new());
-    for id in 0..WEB_TASK_POOL_SIZE {
-        spawner.must_spawn(web_task(id, stack, webserver));
-    }
-
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
-    let mut buf = [0; 4096];
-    loop {
-        let mut socket = embassy_net::tcp::TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(Duration::from_secs(10)));
-        println!("Listening on TCP:1234...");
-        if let Err(e) = socket.accept(1234).await {
-            println!("accept error: {:?}", e);
-            continue;
+            ethernet_task.init(spawner, &mut rng, w5500_cs, w5500_rst, w5500_int, spi_bus).await;
         }
-        println!("Received connection from {:?}", socket.remote_endpoint());
-
-        loop {
-            let n = match socket.read(&mut buf).await {
-                Ok(0) => {
-                    println!("read EOF");
-                    break;
-                }
-                Ok(n) => n,
-                Err(e) => {
-                    println!("{:?}", e);
-                    break;
-                }
-            };
-            println!("rxd {}", core::str::from_utf8(&buf[..n]).unwrap());
-
-            if let Err(e) = socket.write_all(&buf[..n]).await {
-                println!("write error: {:?}", e);
-                break;
-            }
-        }
-    }
-}
-
-async fn wait_for_config(stack: Stack<'static>) -> embassy_net::StaticConfigV4 {
-    loop {
-        if let Some(config) = stack.config_v4() {
-            return config.clone();
-        }
-        yield_now().await;
     }
 }
 

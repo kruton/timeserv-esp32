@@ -1129,6 +1129,7 @@ version = "0.1.0"
 dependencies = [
  "allocator-api2",
  "axp192",
+ "cfg-if",
  "critical-section",
  "embassy-embedded-hal",
  "embassy-executor",
