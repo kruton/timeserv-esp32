@@ -1,13 +1,11 @@
 [target.xtensa-esp32-none-elf]
-runner = "espflash flash --monitor --chip esp32 --log-format defmt"
+runner = "espflash flash --monitor --chip esp32"
 
 [env]
-DEFMT_LOG="info"
 
 [build]
 rustflags = [
   "-C", "link-arg=-nostartfiles",
-  "-C", "link-arg=-Tdefmt.x",
   "-Z", "stack-protector=all",
 ]
 

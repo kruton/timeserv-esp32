@@ -12,7 +12,6 @@ use crate::task::web;
 use crate::task::web::{web_task, WEB_TASK_POOL_SIZE};
 use alloc::vec::Vec;
 use axp192::Axp192;
-use defmt::{info, warn};
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_futures::yield_now;
@@ -39,6 +38,7 @@ use esp_hal::{
     time::Rate,
     Async,
 };
+use esp_println::println;
 use lcd_async::options::{ColorInversion, ColorOrder};
 use lcd_async::{interface, models::ILI9342CRgb565, raw_framebuf::RawFrameBuf, Builder};
 use static_cell::StaticCell;
@@ -82,7 +82,7 @@ async fn net_task(mut runner: embassy_net::Runner<'static, Device<'static>>) -> 
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
-    info!("starting");
+    println!("starting");
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -190,7 +190,7 @@ async fn main(spawner: Spawner) {
         .await
         .unwrap();
 
-    info!("Display initialized!");
+    println!("Display initialized!");
 
     // Initialize frame buffer
     let frame_buffer =
@@ -235,10 +235,10 @@ async fn main(spawner: Spawner) {
 
     stack.wait_config_up().await;
 
-    info!("Waiting for DHCP...");
+    println!("Waiting for DHCP...");
     let cfg = wait_for_config(stack).await;
     let local_addr = cfg.address.address();
-    info!("IP address: {:?}", local_addr);
+    println!("IP address: {:?}", local_addr);
 
     static WEB_SERVER: StaticCell<web::WebServer> = StaticCell::new();
     let webserver = WEB_SERVER.init(web::WebServer::new());
@@ -252,29 +252,29 @@ async fn main(spawner: Spawner) {
     loop {
         let mut socket = embassy_net::tcp::TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(Duration::from_secs(10)));
-        info!("Listening on TCP:1234...");
+        println!("Listening on TCP:1234...");
         if let Err(e) = socket.accept(1234).await {
-            warn!("accept error: {:?}", e);
+            println!("accept error: {:?}", e);
             continue;
         }
-        info!("Received connection from {:?}", socket.remote_endpoint());
+        println!("Received connection from {:?}", socket.remote_endpoint());
 
         loop {
             let n = match socket.read(&mut buf).await {
                 Ok(0) => {
-                    warn!("read EOF");
+                    println!("read EOF");
                     break;
                 }
                 Ok(n) => n,
                 Err(e) => {
-                    warn!("{:?}", e);
+                    println!("{:?}", e);
                     break;
                 }
             };
-            info!("rxd {}", core::str::from_utf8(&buf[..n]).unwrap());
+            println!("rxd {}", core::str::from_utf8(&buf[..n]).unwrap());
 
             if let Err(e) = socket.write_all(&buf[..n]).await {
-                warn!("write error: {:?}", e);
+                println!("write error: {:?}", e);
                 break;
             }
         }

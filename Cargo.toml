@@ -14,25 +14,25 @@ esp-hal                = { version = "=1.0.0-beta.1", features = ["esp32", "psra
 critical-section = "1.2.0"
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
 embassy-time     = "0.4.0"
-esp-hal-embassy  = { version = "0.8.1", features = ["defmt", "esp32"] }
+esp-hal-embassy  = { version = "0.8.1", features = ["esp32"] }
 static_cell      = { version = "2.1.0", features = ["nightly"] }
 embassy-net = { version = "0.7.0", features = ["medium-ethernet", "proto-ipv4", "dhcpv4", "tcp", "medium-ip"] }
 embassy-net-wiznet = { version = "0.2.0" }
-esp-println = { version = "0.14.0", features = ["esp32", "log-04", "defmt-espflash"] }
+esp-println = { version = "0.14.0", features = ["esp32"] }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
-embassy-futures = { version = "0.1.1", features = ["defmt"] }
+embassy-futures = { version = "0.1.1" }
 embedded-io-async = "0.6.1"
 esp-alloc = { version = "0.8.0", features = ["nightly"] }
-embassy-sync = { version = "0.6.2", features = ["defmt"] }
+embassy-sync = { version = "0.6.2" }
 embassy-embedded-hal = "0.3.0"
-defmt = "1.0.1"
-esp-backtrace = { version = "0.16.0", features = ["defmt", "esp32", "exception-handler", "panic-handler"] }
-picoserve = { version = "0.16.0", features = ["defmt", "embassy"] }
-embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
+esp-backtrace = { version = "0.16.0", features = ["esp32", "exception-handler", "panic-handler", "println"] }
+picoserve = { version = "0.16.0", features = ["embassy"] }
+embedded-hal-async = { version = "1.0.0" }
 lcd-async = "0.1.1"
-embedded-graphics = { version = "0.8.1", features = ["defmt"] }
+embedded-graphics = { version = "0.8.1" }
 axp192 = "0.2.0"
-embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
+embedded-hal = { version = "1.0.0"}
+allocator-api2 = { version = "0.3", default-features = false, features = ["alloc"] }
 
 
 [profile.dev]
