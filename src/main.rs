@@ -19,11 +19,14 @@ use embassy_futures::yield_now;
 use embassy_net::{Stack, StackResources};
 use embassy_net_wiznet::{chip::W5500, Device, Runner, State};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_time::Duration;
+use embassy_time::{Duration, Timer};
+use embedded_graphics::primitives::{Circle, PrimitiveStyle};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
+use esp_alloc::{EspHeap, HeapStats};
 use esp_hal::clock::CpuClock;
+use esp_hal::psram;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
@@ -38,9 +41,8 @@ use esp_hal::{
     time::Rate,
     Async,
 };
-use lcd_async::{
-    interface, models::ILI9342CRgb565, options::Orientation, raw_framebuf::RawFrameBuf, Builder,
-};
+use lcd_async::options::{ColorInversion, ColorOrder};
+use lcd_async::{interface, models::ILI9342CRgb565, raw_framebuf::RawFrameBuf, Builder};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 
@@ -48,7 +50,7 @@ extern crate alloc;
 
 mod task;
 
-const DISPLAY_FREQ: u32 = 64_000_000;
+const DISPLAY_FREQ: u32 = 20_000_000;
 const NET_FREQ: u32 = 40_000_000;
 
 // Display parameters
@@ -57,7 +59,7 @@ const LCD_V_RES: u16 = 240;
 const PIXEL_SIZE: usize = 2; // RGB565 = 2 bytes per pixel
 const FRAME_SIZE: usize = (LCD_H_RES as usize) * (LCD_V_RES as usize) * PIXEL_SIZE;
 
-static FRAME_BUFFER: StaticCell<Vec<u8>> = StaticCell::new();
+static FRAME_BUFFER: StaticCell<Vec<u8, esp_alloc::ExternalMemory>> = StaticCell::new();
 
 type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
 //type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
@@ -87,7 +89,7 @@ async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(size: 64 * 1024);
+    esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
     let timer0 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timer0.timer0);
@@ -124,7 +126,7 @@ async fn main(spawner: Spawner) {
     // Shared SPI bus
 
     let spi_cfg = SpiConfig::default()
-        .with_frequency(Rate::from_mhz(40))
+        .with_frequency(Rate::from_mhz(20))
         .with_mode(Mode::_0);
 
     #[allow(clippy::manual_div_ceil)]
@@ -184,8 +186,8 @@ async fn main(spawner: Spawner) {
     let mut display = Builder::new(ILI9342CRgb565, di)
         .reset_pin(lcd_rst)
         .display_size(LCD_H_RES, LCD_V_RES)
-        .orientation(Orientation::new().flip_vertical().flip_horizontal())
-        .color_order(lcd_async::options::ColorOrder::Bgr)
+        .color_order(ColorOrder::Bgr)
+        .invert_colors(ColorInversion::Inverted)
         .init(&mut delay)
         .await
         .unwrap();
@@ -193,7 +195,14 @@ async fn main(spawner: Spawner) {
     info!("Display initialized!");
 
     // Initialize frame buffer
-    let frame_buffer = FRAME_BUFFER.init(Vec::<u8>::with_capacity(FRAME_SIZE));
+    let frame_buffer =
+        FRAME_BUFFER.init(Vec::with_capacity_in(FRAME_SIZE, esp_alloc::ExternalMemory));
+    frame_buffer.resize(FRAME_SIZE, 0);
+
+    let stats = esp_alloc::HEAP.stats();
+    // HeapStats implements the Display and defmt::Format traits, so you can
+    // pretty-print the heap stats.
+    println!("{}", stats);
 
     // Create a framebuffer for drawing
     let mut raw_fb = RawFrameBuf::<Rgb565, _>::new(
@@ -204,10 +213,14 @@ async fn main(spawner: Spawner) {
 
     // Clear the framebuffer to black
     raw_fb.clear(Rgb565::BLACK).unwrap();
+    Circle::new(Point::new(0, 0), 80)
+        .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
+        .draw(&mut raw_fb)
+        .unwrap();
 
     // Send the framebuffer data to the display
     display
-        .show_raw_data(0, 0, LCD_H_RES, LCD_V_RES, frame_buffer)
+        .show_raw_data(0, 0, LCD_H_RES, LCD_V_RES, frame_buffer.as_slice())
         .await
         .unwrap();
 
