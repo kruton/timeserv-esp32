@@ -6,6 +6,11 @@ version = "0.1.0"
 [[bin]]
 name = "ptp-esp32"
 path = "./src/main.rs"
+harness = false
+
+[[test]]
+name = "integration"
+harness = false
 
 [features]
 ethernet = []
@@ -54,3 +59,6 @@ incremental      = false
 lto              = 'fat'
 opt-level        = 's'
 overflow-checks  = false
+
+[dev-dependencies]
+embedded-test = { version = "0.6.2", features = ["xtensa-semihosting", "defmt", "embassy", "external-executor"] }
