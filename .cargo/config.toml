@@ -7,8 +7,6 @@ DEFMT_LOG="info"
 [build]
 rustflags = [
   "-C", "link-arg=-nostartfiles",
-  "-C", "link-arg=-Tdefmt.x",
-  "-Z", "stack-protector=all",
 ]
 
 target = "xtensa-esp32-none-elf"
