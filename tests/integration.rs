@@ -1,9 +1,7 @@
-//! Demo test suite using embedded-test
-//!
-//! You can run this using `cargo test` as usual.
-
 #![no_std]
 #![no_main]
+
+use {defmt as _, esp_println as _};
 
 #[cfg(test)]
 #[embedded_test::tests(executor = esp_hal_embassy::Executor::new())]
