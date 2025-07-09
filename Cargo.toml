@@ -26,7 +26,7 @@ embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embassy-futures = { version = "0.1.1", features = ["defmt"] }
 embedded-io-async = "0.6.1"
 esp-alloc = { version = "0.8.0", features = ["nightly"] }
-embassy-sync = { version = "0.6.2", features = ["defmt"] }
+embassy-sync = { version = "0.7.0", features = ["defmt"] }
 embassy-embedded-hal = "0.3.0"
 defmt = "1.0.1"
 esp-backtrace = { version = "0.16.0", features = ["defmt", "esp32", "exception-handler", "panic-handler"] }
