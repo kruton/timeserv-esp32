@@ -8,6 +8,9 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(allocator_api)]
 
+use crate::backlight::{
+    Axp192BacklightDevice, BacklightChannel, BacklightConfig, BacklightController, BacklightSystem,
+};
 #[cfg(feature = "ethernet")]
 use crate::ethernet::EthernetTask;
 use alloc::vec::Vec;
@@ -15,7 +18,9 @@ use axp192::Axp192;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
+use embassy_sync::channel::Channel;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+use embassy_time::{Duration, Timer};
 use embedded_graphics::primitives::{Circle, PrimitiveStyle};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use esp_hal::clock::CpuClock;
@@ -39,6 +44,7 @@ use {esp_backtrace as _, esp_println as _};
 
 extern crate alloc;
 
+mod backlight;
 #[cfg(feature = "ethernet")]
 mod ethernet;
 mod pmu;
@@ -54,12 +60,18 @@ const FRAME_SIZE: usize = (LCD_H_RES as usize) * (LCD_V_RES as usize) * PIXEL_SI
 
 static FRAME_BUFFER: StaticCell<Vec<u8, esp_alloc::ExternalMemory>> = StaticCell::new();
 
+pub type Pmu = Mutex<NoopRawMutex, Axp192<I2c<'static, Async>>>;
 pub type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
 //type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+#[embassy_executor::task]
+async fn backlight_task(mut controller: BacklightController<Axp192BacklightDevice>) {
+    controller.run().await;
+}
 
 #[esp_hal_embassy::main]
 async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] spawner: Spawner) {
@@ -94,10 +106,12 @@ async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] sp
     let i2c = I2c::new(peripherals.I2C0, I2cConfig::default())
         .unwrap()
         .with_sda(sda)
-        .with_scl(scl);
+        .with_scl(scl)
+        .into_async();
 
-    let mut pmu = Axp192::new(i2c);
-    pmu::m5sc2_init(&mut pmu, &mut delay).await.unwrap();
+    static PMU: StaticCell<Pmu> = StaticCell::new();
+    let pmu = PMU.init(Mutex::new(Axp192::new(i2c)));
+    pmu::m5sc2_init(pmu.get_mut(), &mut delay).await.unwrap();
 
     // Shared SPI bus
 
@@ -187,5 +201,25 @@ async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] sp
 
             ethernet_task.init(spawner, &mut rng, w5500_cs, w5500_rst, w5500_int, spi_bus).await;
         }
+    }
+
+    static BACKLIGHT_CHANNEL: StaticCell<BacklightChannel> = StaticCell::new();
+    let channel = BACKLIGHT_CHANNEL.init(Channel::new());
+
+    let (backlight_system, receiver) = BacklightSystem::new(channel);
+    let backlight_device = Axp192BacklightDevice::new(pmu);
+    let config = BacklightConfig {
+        normal_brightness: 100,
+        dimmed_brightness: 20,
+        dim_timeout: Duration::from_secs(3),
+        off_timeout: Duration::from_secs(2),
+    };
+    let controller = BacklightController::new(backlight_device, config, receiver);
+    spawner.spawn(backlight_task(controller)).unwrap();
+
+    loop {
+        Timer::after(Duration::from_secs(8)).await;
+        info!("poking the backlight system");
+        backlight_system.wake();
     }
 }
