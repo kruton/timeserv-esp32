@@ -12,6 +12,7 @@
 use crate::ethernet::EthernetTask;
 use alloc::vec::Vec;
 use axp192::Axp192;
+use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
@@ -32,7 +33,6 @@ use esp_hal::{
     time::Rate,
     Async,
 };
-use esp_println::println;
 use lcd_async::options::{ColorInversion, ColorOrder};
 use lcd_async::{interface, models::ILI9342CRgb565, raw_framebuf::RawFrameBuf, Builder};
 use static_cell::StaticCell;
@@ -63,7 +63,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_hal_embassy::main]
 async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] spawner: Spawner) {
-    println!("starting");
+    info!("starting");
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -147,7 +147,7 @@ async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] sp
         .await
         .unwrap();
 
-    println!("Display initialized!");
+    info!("Display initialized!");
 
     // Initialize frame buffer
     let frame_buffer =
