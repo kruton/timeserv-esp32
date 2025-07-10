@@ -1,12 +1,12 @@
 use axp192::Axp192;
 use defmt::info;
 use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
+    blocking_mutex::raw::{NoopRawMutex, RawMutex},
     channel::{Channel, Receiver, Sender},
     mutex::Mutex,
 };
 use embassy_time::{with_timeout, Duration, TimeoutError};
-use esp_hal::{i2c::master::I2c, Async};
+use embedded_hal::i2c::I2c;
 
 pub type BacklightChannel = Channel<NoopRawMutex, BacklightCommand, 2>;
 
@@ -153,14 +153,13 @@ impl BacklightSystem {
     }
 }
 
-/// Axp192 backlight device implementation using DCDC3 voltage control
-pub struct Axp192BacklightDevice {
-    pmu: &'static Mutex<NoopRawMutex, Axp192<I2c<'static, Async>>>,
+pub struct Axp192BacklightDevice<AXP> {
+    pmu: AXP,
 }
 
-impl Axp192BacklightDevice {
+impl<AXP> Axp192BacklightDevice<AXP> {
     /// Create a new Axp192BacklightDevice
-    pub fn new(pmu: &'static Mutex<NoopRawMutex, Axp192<I2c<'static, Async>>>) -> Self {
+    pub fn new(pmu: AXP) -> Self {
         Self { pmu }
     }
 
@@ -172,18 +171,40 @@ impl Axp192BacklightDevice {
     }
 }
 
-impl BacklightDevice for Axp192BacklightDevice {
+#[allow(async_fn_in_trait)]
+pub trait Axp192Power {
+    async fn set_dcdc3_voltage(&mut self, voltage: u16);
+    async fn set_dcdc3_on(&mut self, state: bool);
+}
+
+impl<M, I2C, E> Axp192Power for &Mutex<M, Axp192<I2C>>
+where
+    M: RawMutex,
+    I2C: I2c<Error = E>,
+{
+    #[inline]
+    async fn set_dcdc3_voltage(&mut self, mv: u16) {
+        let _ = self.lock().await.set_dcdc3_voltage(mv);
+    }
+
+    #[inline]
+    async fn set_dcdc3_on(&mut self, on: bool) {
+        let _ = self.lock().await.set_dcdc3_on(on);
+    }
+}
+
+impl<AXP: Axp192Power> BacklightDevice for Axp192BacklightDevice<AXP> {
     async fn set_brightness(&mut self, brightness: u8) {
         let voltage = Self::brightness_to_voltage(brightness);
         info!(
             "Setting brightness {}% as voltage to {} mV",
             brightness, voltage
         );
-        let _ = self.pmu.lock().await.set_dcdc3_voltage(voltage);
+        self.pmu.set_dcdc3_voltage(voltage).await;
     }
 
     async fn set_backlight_on(&mut self, on: bool) {
-        let _ = self.pmu.lock().await.set_dcdc3_on(on);
+        self.pmu.set_dcdc3_on(on).await;
     }
 }
 

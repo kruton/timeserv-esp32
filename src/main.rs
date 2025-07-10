@@ -20,10 +20,13 @@ use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_sync::channel::Channel;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
 use embedded_graphics::primitives::{Circle, PrimitiveStyle};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
+use embedded_hal_bus::i2c;
+use embedded_hal_bus::util::AtomicCell;
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Input, InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
@@ -37,6 +40,7 @@ use esp_hal::{
     time::Rate,
     Async,
 };
+use ft6x36::Ft6x36;
 use lcd_async::options::{ColorInversion, ColorOrder};
 use lcd_async::{interface, models::ILI9342CRgb565, raw_framebuf::RawFrameBuf, Builder};
 use static_cell::StaticCell;
@@ -60,16 +64,20 @@ const FRAME_SIZE: usize = (LCD_H_RES as usize) * (LCD_V_RES as usize) * PIXEL_SI
 
 static FRAME_BUFFER: StaticCell<Vec<u8, esp_alloc::ExternalMemory>> = StaticCell::new();
 
-pub type Pmu = Mutex<NoopRawMutex, Axp192<I2c<'static, Async>>>;
+pub type Pmu = Mutex<NoopRawMutex, Axp192<i2c::AtomicDevice<'static, I2c<'static, Async>>>>;
 pub type Spi2Bus = Mutex<NoopRawMutex, SpiDmaBus<'static, Async>>;
-//type I2c0Bus = Mutex<NoopRawMutex, I2c<'static, Async>>;
+pub type I2c0Bus = AtomicCell<I2c<'static, Async>>;
+
+type AxpBacklightDevice = Axp192BacklightDevice<
+    &'static Mutex<NoopRawMutex, Axp192<i2c::AtomicDevice<'static, I2c<'static, Async>>>>,
+>;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[embassy_executor::task]
-async fn backlight_task(mut controller: BacklightController<Axp192BacklightDevice>) {
+async fn backlight_task(mut controller: BacklightController<AxpBacklightDevice>) {
     controller.run().await;
 }
 
@@ -109,9 +117,12 @@ async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] sp
         .with_scl(scl)
         .into_async();
 
+    static I2C_BUS: StaticCell<I2c0Bus> = StaticCell::new();
+    let i2c_cell = I2C_BUS.init(AtomicCell::new(i2c));
+
     static PMU: StaticCell<Pmu> = StaticCell::new();
-    let pmu = PMU.init(Mutex::new(Axp192::new(i2c)));
-    pmu::m5sc2_init(pmu.get_mut(), &mut delay).await.unwrap();
+    let pmu: &_ = PMU.init(Mutex::new(Axp192::new(i2c::AtomicDevice::new(i2c_cell))));
+    pmu::m5sc2_init(pmu, &mut delay).await.unwrap();
 
     // Shared SPI bus
 
@@ -217,9 +228,19 @@ async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] sp
     let controller = BacklightController::new(backlight_device, config, receiver);
     spawner.spawn(backlight_task(controller)).unwrap();
 
+    let mut touch_screen = Ft6x36::new(
+        i2c::AtomicDevice::new(i2c_cell),
+        ft6x36::Dimension(LCD_H_RES, LCD_V_RES),
+    );
+    let mut touch_input = Input::new(
+        peripherals.GPIO39,
+        InputConfig::default().with_pull(Pull::Down),
+    );
+
     loop {
-        Timer::after(Duration::from_secs(8)).await;
-        info!("poking the backlight system");
+        touch_input.wait_for_any_edge().await;
+        let event = touch_screen.get_touch_event().unwrap();
+        info!("got event: {:?}", event);
         backlight_system.wake();
     }
 }
