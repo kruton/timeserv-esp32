@@ -86,19 +86,13 @@ impl<U: BacklightDevice> BacklightController<U> {
             .await;
 
         loop {
-            // Wait for dim timeout or command
             match with_timeout(self.config.dim_timeout, self.command_receiver.receive()).await {
-                Ok(command) => {
-                    match command {
-                        BacklightCommand::Wake => {
-                            // Reset to normal brightness
-                            let _ = self.device.set_backlight_on(true).await;
-                            let _ = self
-                                .device
-                                .set_brightness(self.config.normal_brightness)
-                                .await;
-                        }
-                    }
+                Ok(BacklightCommand::Wake) => {
+                    let _ = self.device.set_backlight_on(true).await;
+                    let _ = self
+                        .device
+                        .set_brightness(self.config.normal_brightness)
+                        .await;
                 }
                 Err(TimeoutError) => {
                     let _ = self
@@ -106,7 +100,6 @@ impl<U: BacklightDevice> BacklightController<U> {
                         .set_brightness(self.config.dimmed_brightness)
                         .await;
 
-                    // Wait for off timeout or wake command
                     match with_timeout(self.config.off_timeout, self.command_receiver.receive())
                         .await
                     {
@@ -119,7 +112,6 @@ impl<U: BacklightDevice> BacklightController<U> {
                         Err(TimeoutError) => {
                             let _ = self.device.set_backlight_on(false).await;
 
-                            // Wait indefinitely for wake command
                             match self.command_receiver.receive().await {
                                 BacklightCommand::Wake => {
                                     let _ = self.device.set_backlight_on(true).await;
@@ -127,7 +119,6 @@ impl<U: BacklightDevice> BacklightController<U> {
                                         .device
                                         .set_brightness(self.config.normal_brightness)
                                         .await;
-                                    break;
                                 }
                             }
                         }
