@@ -1,12 +1,15 @@
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embedded_hal_async::delay::DelayNs;
 
 pub async fn m5sc2_init<I2C, E>(
-    axp: &mut axp192::Axp192<I2C>,
+    pmu_mutex: &Mutex<NoopRawMutex, axp192::Axp192<I2C>>,
     delay: &mut embassy_time::Delay,
 ) -> Result<(), E>
 where
     I2C: embedded_hal::i2c::I2c<Error = E>,
 {
+    let mut axp = pmu_mutex.lock().await;
+
     // Default setup for M5Stack Core 2
     axp.set_dcdc1_voltage(3350)?; // Voltage to provide to the microcontroller (this one!)
 
