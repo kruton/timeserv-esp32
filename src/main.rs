@@ -204,8 +204,8 @@ async fn main(#[cfg_attr(not(feature = "ethernet"), allow(unused_variables))] sp
             use esp_hal::rng::Rng;
 
             let w5500_cs = peripherals.GPIO33;
-            let w5500_rst = peripherals.GPIO24;
-            let w5500_int = peripherals.GPIO19;
+            let w5500_rst = peripherals.GPIO0;
+            let w5500_int = peripherals.GPIO35;
 
             let ethernet_task = EthernetTask::new();
             let mut rng = Rng::new(peripherals.RNG);
