@@ -34,7 +34,7 @@ esp-alloc = { version = "0.8.0", features = ["nightly"] }
 embassy-sync = { version = "0.6.2", features = ["defmt"] }
 embassy-embedded-hal = "0.3.0"
 defmt = "1.0.1"
-esp-backtrace = { version = "0.16.0", features = ["defmt", "esp32", "exception-handler", "panic-handler"] }
+esp-backtrace = { version = "0.20.0", features = ["defmt", "esp32", "exception-handler", "panic-handler"] }
 picoserve = { version = "0.16.0", features = ["defmt", "embassy"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 lcd-async = "0.1.1"
