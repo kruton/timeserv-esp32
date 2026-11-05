@@ -16,7 +16,7 @@ harness = false
 ethernet = []
 
 [dependencies]
-esp-bootloader-esp-idf = "0.1.0"
+esp-bootloader-esp-idf = "0.6.0"
 esp-hal                = { version = "=1.0.0-beta.1", features = ["esp32", "psram", "unstable"] }
 
 critical-section = "1.2.0"
